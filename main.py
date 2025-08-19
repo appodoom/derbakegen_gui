@@ -1,5 +1,94 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+import numpy as np
+from config import get_audio_data
+import soundfile as sf
+import random
+import math
+def squeleton_generator(bpm, squeleton, num_cycles, sr=48000):
+    print(squeleton)
+    beat_length_in_samples = int((60 / bpm) * sr)
+    skeleton_length = len(squeleton)
+    num_of_beats_in_audio = num_cycles * skeleton_length
+
+    length_in_samples = int(
+        sum([x[0] * beat_length_in_samples for x in squeleton]) * num_cycles
+    )
+    squeleton_samples_indices = []
+    y = np.zeros(length_in_samples + beat_length_in_samples)
+
+    accumulator = i = 0
+    while accumulator <= num_of_beats_in_audio:
+        accumulator += squeleton[i % skeleton_length][0]
+        curr_beat = squeleton[i % skeleton_length][1]
+        y_hit = get_audio_data(curr_beat, sr)
+        hit_timestamp = int(accumulator * beat_length_in_samples)
+        end_index = hit_timestamp + len(y_hit)
+
+        # place curr_beat on accumulator
+        if end_index <= len(y):
+            y[hit_timestamp:end_index] += y_hit
+            squeleton_samples_indices.append((hit_timestamp, end_index))
+        i += 1
+    sf.write("squeleton.wav", data=y, samplerate=sr)
+    return y[squeleton_samples_indices[0][0]-10:], beat_length_in_samples, skeleton_length, squeleton_samples_indices
+
+def subdivisions_generator(
+    y,
+    maxsubd,
+    squeleton_samples_indices,
+    beat_length_in_samples,
+    hit_probabilities,
+    even_subdivisions_percentage,
+):
+    subdivisions_y = np.zeros(len(y))
+    index_of_current_slot_samples = 0
+    duration_in_sample_by_maxsub = int(beat_length_in_samples / maxsubd)
+    hits = list(hit_probabilities.keys())
+    weights = list(hit_probabilities.values())
+    added_hits_indicies_in_samples = []
+    while index_of_current_slot_samples < len(subdivisions_y):
+        if random.random() >= even_subdivisions_percentage:
+            index_of_current_slot_samples += duration_in_sample_by_maxsub
+            continue
+
+        remaining = len(subdivisions_y) - index_of_current_slot_samples
+        hit_choosen = random.choices(hits, weights=weights, k=1)[0]
+
+        hit_y = get_audio_data(hit_choosen)
+        add_len = min(len(hit_y), remaining)
+
+        if hit_choosen == "S":
+            index_of_current_slot_samples += duration_in_sample_by_maxsub
+        else:
+            for sk_start, sk_end in squeleton_samples_indices:
+                if (
+                    index_of_current_slot_samples >= sk_start
+                    and (index_of_current_slot_samples + add_len)
+                    <= sk_start + duration_in_sample_by_maxsub
+                ):
+                    index_of_current_slot_samples += duration_in_sample_by_maxsub
+                    break
+            else:
+                subdivisions_y[
+                    index_of_current_slot_samples : index_of_current_slot_samples
+                    + add_len
+                ] += hit_y[:add_len]
+                added_hits_indicies_in_samples.append(
+                    (
+                        index_of_current_slot_samples,
+                        index_of_current_slot_samples + add_len,
+                    )
+                )
+                index_of_current_slot_samples += duration_in_sample_by_maxsub
+    y += subdivisions_y
+    sf.write(
+        f"generated.wav",
+        y,
+        samplerate=48000,
+    )
+    return y, added_hits_indicies_in_samples
+
 
 class GUI:
     def __init__(self):
@@ -13,7 +102,26 @@ class GUI:
         self.create_input("Tempo (in bpm):", "tempo")
         self.create_input("Cycle length (in beats):", "cycle_length")
         self.create_input("Smallest note (0-1):", "smallest_note", self.validate_0_to_1)
-        self.create_input("Percentage of power two notes:", "variation_percent", self.validate_0_to_100)
+        self.create_input("Percentage of even notes:", "variation_percent", self.validate_0_to_100)
+        self.create_input("Percentage of Doom", "percent_doom", self.validate_0_to_100)
+        self.create_input("Percentage of Open Tak", "percent_ota", self.validate_0_to_100)
+        self.create_input("Percentage of Open Tik", "percent_oti", self.validate_0_to_100)
+        self.create_input("Percentage of Tik1", "percent_t1", self.validate_0_to_100)
+        self.create_input("Percentage of Tik2", "percent_t2", self.validate_0_to_100)
+        self.create_input("Percentage of Ra2", "percent_ra", self.validate_0_to_100)
+        self.create_input("Percentage of Pa2", "percent_pa2", self.validate_0_to_100)
+
+
+        self.map = {
+            "Silence": "S",
+            "Doom": "D",
+            "Open Tak": "OTA",
+            "Open Tik": "OTI",
+            "Pa2": "PA2",
+            "Ra2": "RA",
+            "Tik1": "T1",
+            "Tik2": "T2"
+        }
         
         # Submit button
         self.submit_btn = tk.Button(
@@ -87,7 +195,8 @@ class GUI:
             self.cycle_length = int(float(self.cycle_length_entry.get()))
             self.smallest_note = float(self.smallest_note_entry.get())
             self.variation_percent = float(self.variation_percent_entry.get())
-            
+            self.percentages = [self.percent_doom_entry.get(), self.percent_ota_entry.get(), self.percent_oti_entry.get(), self.percent_t1_entry.get(), self.percent_t2_entry.get(), self.percent_ra_entry.get(), self.percent_pa2_entry.get()]
+            self.percentages = [float(i)/100 for i in self.percentages]
             # Validate cycles
             if self.cycles <= 0:
                 raise ValueError("Number of cycles must be positive")
@@ -107,7 +216,9 @@ class GUI:
             # Validate variation percentage
             if not 0 <= self.variation_percent <= 100:
                 raise ValueError("Variation percentage must be between 0 and 100%")
-                
+            
+            if sum(self.percentages) > 1:
+                raise ValueError("Percentages must be less than 100%")
             # If validation succeeds, create the cycle points window
             self.create_cycle_points_window()
             
@@ -148,7 +259,7 @@ class GUI:
         for i in range(1, self.cycle_length + 1):
             self.points.append({
                 'value': float(i),
-                'var': tk.StringVar(value=""),
+                'var': tk.StringVar(value="Silence"),
                 'frame': None,
                 'label': None,
                 'dropdown': None
@@ -187,7 +298,7 @@ class GUI:
             point['label'].pack(side=tk.LEFT)
 
             # Sound selection dropdown
-            sound_options = ["", "Doom", "Open Tak", "Open Tik", "Pa2", "Ra2", "Tik1", "Tik2"]
+            sound_options = ["Silence", "Doom", "Open Tak", "Open Tik", "Pa2", "Ra2", "Tik1", "Tik2"]
             point['dropdown'] = ttk.Combobox(
                 point['frame'],
                 textvariable=point['var'],
@@ -225,7 +336,7 @@ class GUI:
             # Add the new point
             self.points.append({
                 'value': value,
-                'var': tk.StringVar(value=""),
+                'var': tk.StringVar(value="Silence"),
                 'frame': None,
                 'label': None,
                 'dropdown': None
@@ -241,6 +352,63 @@ class GUI:
         
         message = "\n".join([f"{value:.5f}: {sound}" for value, sound in selected_values])
         messagebox.showinfo("Selected Values", message)
+
+        # Save the second window preferences
+        self.selected_points = selected_values
+        squeleton = []
+        acc = 0
+        for pos, val in selected_values:
+            new_val = self.map.get(val, "S")
+            if new_val == "S" and pos != self.cycle_length: continue
+            pos = pos - acc
+            acc += pos
+            squeleton.append((pos, new_val))
+
+        squeleton_y, beat_length_in_samples, skeleton_length, squeleton_samples_indices = squeleton_generator(float(self.tempo), squeleton ,float(self.cycles))
+        
+        hit_probabilities = {
+            "D": self.percentages[0],
+            "OTA": self.percentages[1],
+            "OTI": self.percentages[2],
+            "T1": self.percentages[3],
+            "T2": self.percentages[4],
+            "RA": self.percentages[5],
+            "PA2": self.percentages[6],
+            "S": 1-sum(self.percentages)
+        }
+
+        maxsubd = 1/self.smallest_note
+
+        y, added_hits_indicies_in_samples = subdivisions_generator(
+            hit_probabilities=hit_probabilities,
+            y=squeleton_y,
+            squeleton_samples_indices=squeleton_samples_indices,
+            beat_length_in_samples=beat_length_in_samples,
+            maxsubd=maxsubd,
+            even_subdivisions_percentage=self.variation_percent/100,
+        )
+
+        smallest_odd_note = 0
+
+        for i in range(math.floor(maxsubd), -1, -1):
+            if i % 3 == 0:
+                smallest_odd_note = i
+                break
+        generated_y = y
+        if smallest_odd_note > 0:
+            final_y, _ = subdivisions_generator(
+                hit_probabilities=hit_probabilities,
+                y=squeleton_y,
+                squeleton_samples_indices=added_hits_indicies_in_samples
+                + squeleton_samples_indices,
+                beat_length_in_samples=beat_length_in_samples,
+                maxsubd=smallest_odd_note,
+                even_subdivisions_percentage=(100-self.variation_percent)/100,
+            )
+            generated_y = final_y
+        
+        sf.write("generated.wav", data=generated_y, samplerate=48000)
+
         self.cycle_window.destroy()
         self.root.deiconify()
     
