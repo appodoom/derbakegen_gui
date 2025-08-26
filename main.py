@@ -6,14 +6,21 @@ import soundfile as sf
 import random
 import math
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
 def squeleton_generator(bpm, squeleton, num_cycles, sr=48000):
     print(squeleton)
     beat_length_in_samples = int((60 / bpm) * sr)
     skeleton_length = len(squeleton)
     num_of_beats_in_audio = num_cycles * sum(x[0] for x in squeleton)
 
+<<<<<<< HEAD
     # [(1, D), (2.5, T), (2, S)]
+=======
+    #[(1, D), (2.5, T), (2, S)]
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
     length_in_samples = int(
         sum([x[0] * beat_length_in_samples for x in squeleton]) * num_cycles
     )
@@ -32,6 +39,7 @@ def squeleton_generator(bpm, squeleton, num_cycles, sr=48000):
             y[hit_timestamp:end_of_hit_timestamp] += y_hit
             squeleton_hits_intervals.append((hit_timestamp, end_of_hit_timestamp))
         i += 1
+<<<<<<< HEAD
     y_without_initial_silence = y[squeleton_hits_intervals[0][0] - 10 :]
     sf.write("squeleton.wav", data=y_without_initial_silence, samplerate=sr)
     return (
@@ -41,6 +49,11 @@ def squeleton_generator(bpm, squeleton, num_cycles, sr=48000):
         squeleton_hits_intervals,
     )
 
+=======
+    y_without_initial_silence = y[squeleton_hits_intervals[0][0]-10:]
+    sf.write("squeleton.wav", data=y_without_initial_silence, samplerate=sr)
+    return y_without_initial_silence, beat_length_in_samples, skeleton_length, squeleton_hits_intervals
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
 
 def subdivisions_generator(
     y,
@@ -71,6 +84,7 @@ def subdivisions_generator(
             sample_of_curr_subd += maxsubd_length
         else:
             for sk_start, _ in squeleton_hits_intervals:
+<<<<<<< HEAD
                 if sk_start <= sample_of_curr_subd <= sk_start + maxsubd_length:
                     sample_of_curr_subd += maxsubd_length
                     break
@@ -78,6 +92,18 @@ def subdivisions_generator(
                 subdivisions_y[sample_of_curr_subd : sample_of_curr_subd + add_len] += (
                     hit_y[:add_len]
                 )
+=======
+                if (
+                    sk_start <= sample_of_curr_subd <= sk_start + maxsubd_length
+                ):
+                    sample_of_curr_subd += maxsubd_length
+                    break
+            else:
+                subdivisions_y[
+                    sample_of_curr_subd : sample_of_curr_subd
+                    + add_len
+                ] += hit_y[:add_len]
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
                 added_hits_intervals.append(
                     (
                         sample_of_curr_subd,
@@ -106,11 +132,15 @@ class GUI:
         self.create_input("Tempo (in bpm):", "tempo")
         self.create_input("Cycle length (in beats):", "cycle_length")
         self.create_input("Max subdivisions:", "maxsubd")
+<<<<<<< HEAD
         self.create_input(
             "Percentage of odd subdivisions:",
             "variation_percent",
             self.validate_0_to_100,
         )
+=======
+        self.create_input("Percentage of odd subdivisions:", "variation_percent", self.validate_0_to_100)
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
         self.create_input("Percentage of Doom", "percent_doom", self.validate_0_to_100)
         self.create_input(
             "Percentage of Open Tak", "percent_ota", self.validate_0_to_100
@@ -220,7 +250,11 @@ class GUI:
             # Validate cycle length
             if self.cycle_length <= 0:
                 raise ValueError("Cycle length must be positive")
+<<<<<<< HEAD
 
+=======
+                
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
             # Validate variation percentage
             if not 0 <= self.variation_percent <= 100:
                 raise ValueError("Variation percentage must be between 0 and 100%")
@@ -386,10 +420,15 @@ class GUI:
             acc += pos
             squeleton.append((pos, new_val))
 
+<<<<<<< HEAD
         squeleton_y, beat_length_in_samples, _, squeleton_hits_intervals = (
             squeleton_generator(float(self.tempo), squeleton, float(self.cycles))
         )
 
+=======
+        squeleton_y, beat_length_in_samples, _, squeleton_hits_intervals = squeleton_generator(float(self.tempo), squeleton ,float(self.cycles))
+        
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
         hit_probabilities = {
             "D": self.percentages[0],
             "OTA": self.percentages[1],
@@ -409,7 +448,11 @@ class GUI:
             squeleton_hits_intervals=squeleton_hits_intervals,
             beat_length_in_samples=beat_length_in_samples,
             maxsubd=maxsubd,
+<<<<<<< HEAD
             subdivisions_percentage=1 - (self.variation_percent / 100),
+=======
+            subdivisions_percentage=1-(self.variation_percent/100),
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
         )
 
         smallest_odd_note = 0
@@ -427,7 +470,11 @@ class GUI:
                 + squeleton_hits_intervals,
                 beat_length_in_samples=beat_length_in_samples,
                 maxsubd=smallest_odd_note,
+<<<<<<< HEAD
                 subdivisions_percentage=self.variation_percent / 100,
+=======
+                subdivisions_percentage=self.variation_percent/100,
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
             )
             generated_y = final_y
 

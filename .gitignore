@@ -1,8 +1,12 @@
 .venv/
 __pycache__/
 ./generated.wav
+<<<<<<< HEAD
 ./squeleton.wav
 generated
 generated1
 generated2
 generated_adjust
+=======
+./squeleton.wav
+>>>>>>> d45494f44635c2888de6c5d8303dd3a75a2c309c
