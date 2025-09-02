@@ -311,21 +311,22 @@ def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation)
     return choices
 
 
-def fit_to_length(x, target_len):
-    if len(x) == target_len:
-        return x
-    if len(x) > target_len:
-        return x[:target_len]
-    pad = target_len - len(x)
-    if len(x) == 0:
-        return np.zeros(target_len, dtype=np.float32)
-    return np.pad(x, (0, pad), mode="edge")
+# def fit_to_length(x, target_len):
+#     if len(x) == target_len:
+#         return x
+#     if len(x) > target_len:
+#         return x[:target_len]
+#     pad = target_len - len(x)
+#     if len(x) == 0:
+#         return np.zeros(target_len, dtype=np.float32)
+#     return np.pad(x, (0, pad), mode="edge")
 
 
 def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tempo, sr):
     beat_length_in_samples = int((60 / initial_tempo) * sr)
     current_beat = 1
     current_tempo = initial_tempo
+    new_y=[]
     while current_beat < num_of_beats:
         start = current_beat * beat_length_in_samples
         end = start + beat_length_in_samples
@@ -337,27 +338,26 @@ def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tem
         choice = random.choice(choices)
 
         if choice == 2:  # Increase
-            deviation = random.randint(1, allowed_tempo_deviation)
-            current_tempo = initial_tempo + deviation
+            deviation = random.randint(1, initial_tempo+allowed_tempo_deviation-current_tempo)
+            current_tempo = current_tempo + deviation
         elif choice == 3:  # Decrease
-            deviation = random.randint(1, allowed_tempo_deviation)
-            current_tempo = initial_tempo - deviation
+            deviation = random.randint(1, initial_tempo+allowed_tempo_deviation-current_tempo)
+            current_tempo = current_tempo - deviation
         else:  # Keep
-            current_tempo = initial_tempo
+            current_tempo = current_tempo
         new_sr = (beat_length_in_samples * current_tempo) / 60.0
         seg = y[start:end]
         seg_rs = librosa.resample(y=seg, orig_sr=sr, target_sr=new_sr)
-        seg_fixed = fit_to_length(seg_rs, beat_length_in_samples)
-        y[start:end] = seg_fixed
+        new_y=np.concatenate([new_y,seg_rs])
         current_beat += 1
 
     sf.write(
         "./final.wav",
-        y,
+        new_y,
         samplerate=sr,
     )
 
-    return y
+    return new_y
 
 
 notes = ["D", "OTA", "OTI", "T1", "T2", "RA", "PA2"]

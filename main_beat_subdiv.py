@@ -2,7 +2,7 @@ import numpy as np
 from config import get_audio_data
 import soundfile as sf
 import random
-
+import librosa
 
 def get_probability_matrix(matrix, notes):
     return dict(zip(notes, matrix))
@@ -146,6 +146,7 @@ def subdivisions_generator_adjusted(
     subdiv_proba,
     sr=48000,
 ):
+    num_of_beats = num_cycles * sum(x[0] for x in squeleton)
     hits_list = list(probabilities_matrix.keys())
     number_of_hits = len(hits_list)
     processes = build_processes(
@@ -170,8 +171,58 @@ def subdivisions_generator_adjusted(
         y,
         samplerate=48000,
     )
-    return y
+    return y, num_of_beats, bpm
 
+
+def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation):
+    lower = initial_tempo - allowed_tempo_deviation
+    upper = initial_tempo + allowed_tempo_deviation
+    choices = [1]  # keep
+    if current_tempo <= lower:
+        choices.append(2)  # increase
+    elif current_tempo >= upper:
+        choices.append(3)  # decrease
+    else:
+        choices.extend([2, 3])
+    return choices
+
+
+def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tempo, sr):
+    beat_length_in_samples = int((60 / initial_tempo) * sr)
+    current_beat = 1
+    current_tempo = initial_tempo
+    new_y=[]
+    while current_beat < num_of_beats:
+        start = current_beat * beat_length_in_samples
+        end = start + beat_length_in_samples
+        if start >= len(y):
+            break
+        choices = get_available_choices(
+            current_tempo, initial_tempo, allowed_tempo_deviation
+        )
+        choice = random.choice(choices)
+
+        if choice == 2:  # Increase
+            deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
+            current_tempo = current_tempo + deviation
+        elif choice == 3:  # Decrease
+            deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
+            current_tempo = current_tempo - deviation
+        else:  # Keep
+            current_tempo = current_tempo
+        new_sr = (beat_length_in_samples * current_tempo) / 60.0
+        seg = y[start:end]
+        seg_rs = librosa.resample(y=seg, orig_sr=sr, target_sr=new_sr)
+        new_y=np.concatenate([new_y,seg_rs])
+        current_beat += 1
+
+    sf.write(
+        "./final.wav",
+        new_y,
+        samplerate=sr,
+    )
+
+    return new_y
 
 notes = ["D", "OTA", "OTI", "T1", "T2", "RA", "PA2"]
 squleton = [(1, "D"), (1, "T1"), (1, "OTA"), (1, "RA")]
@@ -189,11 +240,19 @@ subdiv_proba=[40,7.5,7.5,7.5,7.5,7.5,7.5]
 
 probabilities_matrix = get_probability_matrix(matrix=matrix, notes=notes)
 print(probabilities_matrix)
-subdivisions_generator_adjusted(
+y_generated, num_of_beats, initial_tempo =subdivisions_generator_adjusted(
     maxsubd=8,
     bpm=120,
     probabilities_matrix=probabilities_matrix,
     squeleton=squleton,
     num_cycles=10,
     subdiv_proba=subdiv_proba
+)
+
+adjust_generated_tempo(
+    y=y_generated,
+    allowed_tempo_deviation=5,
+    num_of_beats=num_of_beats,
+    initial_tempo=initial_tempo,
+    sr=48000,
 )
