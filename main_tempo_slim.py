@@ -60,58 +60,72 @@ def subdivisions_generator(
     beat_length_in_samples,
     hit_probabilities,
     subdiv_proba,
-    cycle_length
+    cycle_length,
+    number_of_beats,
+    sr=48000,
+    beat_tempo_vari_proba=0.1
 ):  
     subdiv_array=[]
     for i in range(len(subdiv_proba)):
         subdiv_array.append(i)
     maxsubdi=random.choices(population=subdiv_array,weights=subdiv_proba,k=1)[0]
     added_hits_intervals = sorted(added_hits_intervals, key=lambda x: x[0])
-    subdivisions_y = np.zeros(len(y))
+    subdivisions_y = []
     sample_of_curr_subd = 0
     maxsubd_length = int(beat_length_in_samples / (maxsubd-maxsubdi))
     hits = list(hit_probabilities[maxsubdi].keys())
     weights = list(hit_probabilities[maxsubdi].values())
     new_added_hits_intervals = []
-    while sample_of_curr_subd < len(subdivisions_y):
-        if sample_of_curr_subd%beat_length_in_samples==0:
-            maxsubdi=random.choices(population=subdiv_array,weights=subdiv_proba,k=1)[0]
-            maxsubd_length = int(beat_length_in_samples / (maxsubd-maxsubdi))
-            hits = list(hit_probabilities[maxsubdi].keys())
-            weights = list(hit_probabilities[maxsubdi].values())
-        remaining = len(subdivisions_y) - sample_of_curr_subd
-        random_proba_list = get_random_proba_list(weights)
-        chosen_hit = random.choices(hits, weights=random_proba_list, k=1)[0]
-        # print(f"choosen hit : {chosen_hit}")
-        if chosen_hit == "S":
-            sample_of_curr_subd += maxsubd_length
-        else:
-            hit_y = get_audio_data(chosen_hit)
-            add_len = min(len(hit_y), remaining)
-
-            for start, _ in added_hits_intervals:
-                if start <= sample_of_curr_subd <= start + maxsubd_length:
-                    sample_of_curr_subd += maxsubd_length
-                    break
-            else:
-                subdivisions_y[sample_of_curr_subd : sample_of_curr_subd + add_len] += (
-                    hit_y[:add_len]
-                )
-                new_added_hits_intervals.append(
-                    (
-                        sample_of_curr_subd,
-                        sample_of_curr_subd + add_len,
-                    )
-                )
+    current_tempo=60*sr/beat_length_in_samples
+    initial_tempo=current_tempo
+    cycle_tempo=current_tempo
+    # number_of_beats=(len(y))/beat_length_in_samples
+    for i in range(int(number_of_beats)):
+        if i%(cycle_length)==0:
+            cycle_tempo=get_tempo(current_tempo=current_tempo, initial_tempo=initial_tempo,allowed_tempo_deviation=5)
+        current_tempo=cycle_tempo
+        sample_of_curr_subd = 0
+        beat_length_in_samples=60*sr/current_tempo
+        if random.random()<beat_tempo_vari_proba:
+                current_tempo=get_tempo(current_tempo=current_tempo, initial_tempo=initial_tempo, allowed_tempo_deviation=5)
+                beat_length_in_samples=60*sr/current_tempo
+        maxsubdi=random.choices(population=subdiv_array,weights=subdiv_proba,k=1)[0]
+        hits = list(hit_probabilities[maxsubdi].keys())
+        weights = list(hit_probabilities[maxsubdi].values())
+        maxsubd_length = int(beat_length_in_samples / (maxsubd-maxsubdi))
+        # remaining = len(subdivisions_y) - sample_of_curr_subd
+        while sample_of_curr_subd < beat_length_in_samples:
+            random_proba_list = get_random_proba_list(weights)
+            chosen_hit = random.choices(hits, weights=random_proba_list, k=1)[0]
+            # print(f"choosen hit : {chosen_hit}")
+            if chosen_hit == "S":
                 sample_of_curr_subd += maxsubd_length
-    y += subdivisions_y
+            else:
+                hit_y = get_audio_data(chosen_hit)
+                add_len = len(hit_y)
+
+                for start, _ in added_hits_intervals:
+                    if start <= sample_of_curr_subd <= start + maxsubd_length:
+                        sample_of_curr_subd += maxsubd_length
+                        break
+                else:
+                    subdivisions_y.extend(
+                        hit_y[:add_len]
+                    )
+                    new_added_hits_intervals.append(
+                        (
+                            sample_of_curr_subd,
+                            sample_of_curr_subd + add_len,
+                        )
+                    )
+                    sample_of_curr_subd += maxsubd_length
     # sf.write(
     #     f"./generated/t_{maxsubd}.wav",
     #     y,
     #     samplerate=48000,
     # )
     new_added_hits_intervals.extend(added_hits_intervals)
-    return y, new_added_hits_intervals
+    return np.array(subdivisions_y), new_added_hits_intervals
 
 
 def build_processes(maxsubd, number_of_hits, hits_list, probabilities_matrix):
@@ -167,7 +181,9 @@ def subdivisions_generator_adjusted(
             beat_length_in_samples=beat_length_in_samples,
             hit_probabilities=processes,
             subdiv_proba=subdiv_proba,
-            cycle_length=cycle_length
+            cycle_length=cycle_length,
+            sr=sr,
+            number_of_beats=num_of_beats
         )
     sf.write(
         "./final_4.wav",
@@ -189,63 +205,25 @@ def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation)
         choices.extend([2, 3])
     return choices
 
-
-def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tempo, sr, cycle_length, proba_tempo_beat_vari):
-    beat_length_in_samples = int((60 / initial_tempo) * sr)
-    current_beat = 1
-    current_tempo = initial_tempo
-    chunks=[]
-    cycle_tempo=initial_tempo
-    while current_beat < num_of_beats:
-        start = current_beat * beat_length_in_samples
-        end = start + beat_length_in_samples
-        if start >= len(y):
-            break
-        if current_beat%cycle_length==0:
-            choices = get_available_choices(
+def get_tempo(current_tempo, initial_tempo, allowed_tempo_deviation):
+    choices = get_available_choices(
                 current_tempo, initial_tempo, allowed_tempo_deviation
             )
-            choice = random.choice(choices)
-            if choice == 2:  # Increase
-                deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
-                current_tempo = current_tempo + deviation
-            elif choice == 3:  # Decrease
-                deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
-                current_tempo = current_tempo - deviation
-            else:  # Keep
-                current_tempo = current_tempo
-            cycle_tempo=current_tempo
-        else:
-            beat_vary=random.choices(population=[0,1],weights=[proba_tempo_beat_vari, 100-proba_tempo_beat_vari],k=1)
-            if beat_vary[0]==0:
-                choices = get_available_choices(
-                current_tempo, initial_tempo, allowed_tempo_deviation
-                )
-                choice = random.choice(choices)
-                if choice == 2:  # Increase
-                    deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
-                    current_tempo = current_tempo + deviation
-                elif choice == 3:  # Decrease
-                    deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
-                    current_tempo = current_tempo - deviation
-                else:  # Keep
-                    current_tempo = current_tempo
-            else:
-                current_tempo=cycle_tempo
-        seg = y[start:end]
-        seg_rs = librosa.effects.time_stretch(y=seg, rate=current_tempo/initial_tempo)
-        chunks.append(seg_rs)
-        current_tempo=cycle_tempo
-        current_beat += 1
-    new_y=np.concatenate(chunks)
+    choice = random.choice(choices)
+    if choice == 2:  # Increase
+        deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
+        return current_tempo + deviation
+    elif choice == 3:  # Decrease
+        deviation = random.randint(0, initial_tempo+allowed_tempo_deviation-current_tempo)
+        return current_tempo - deviation
+    else:  # Keep
+        return current_tempo
 
-    sf.write(
-        "./final_1.wav",
-        new_y,
-        samplerate=sr,
-    )
 
-    return new_y
+
+
+
+
 
 notes = ["D", "OTA", "OTI", "T1", "T2", "RA", "PA2"]
 squleton = [(1, "D"), (0.5, "OTA"),(1,"OTA"),(0.5,"D"),(1,"OTA")]
@@ -258,7 +236,7 @@ matrix = [
     [0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625],
     [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
 ]
-subdiv_proba=[40,7.5,7.5,7.5,7.5,7.5,7.5,7.5]
+subdiv_proba=[30,7.5,7.5,7.5,7.5,7.5,7.5,7.5]
 
 
 probabilities_matrix = get_probability_matrix(matrix=matrix, notes=notes)
@@ -268,19 +246,8 @@ y_generated, num_of_beats, initial_tempo =subdivisions_generator_adjusted(
     bpm=120,
     probabilities_matrix=probabilities_matrix,
     squeleton=squleton,
-    num_cycles=10,
+    num_cycles=20,
     subdiv_proba=subdiv_proba,
     cycle_length=4
     
-)
-
-adjust_generated_tempo(
-    y=y_generated,
-    allowed_tempo_deviation=5,
-    num_of_beats=num_of_beats,
-    initial_tempo=initial_tempo,
-    sr=48000,
-    cycle_length=4,
-    proba_tempo_beat_vari=10
-
 )
