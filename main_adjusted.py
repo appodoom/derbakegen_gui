@@ -39,7 +39,7 @@ def get_random_proba_list(weights):
 
 
 def get_window_by_beat(expected_hit_timestamp, beat_len):
-    half = int(0.1 * beat_len)
+    half = int(0.05 * beat_len)
     start_of_window = max(0, expected_hit_timestamp - half)
     end_of_window = expected_hit_timestamp + half
     return (start_of_window, end_of_window)
@@ -53,29 +53,10 @@ def get_deviated_sample(
     return int(random.uniform(start_of_window, end_of_window))
 
 
-# def crossfade_add(dst, seg, start, fade=256):
-#     end = start + len(seg)
-#     if end > len(dst):
-#         pad = end - len(dst)
-#         dst.resize(len(dst) + pad, refcheck=False)
-
-#     if fade > 0:
-#         f1 = np.sin(np.linspace(0, np.pi / 2, fade)) ** 2
-#         f0 = np.cos(np.linspace(0, np.pi / 2, fade)) ** 2
-#         tail = dst[start : start + fade]
-#         seg[:fade] = seg[:fade] * f1 + tail * f0
-
-
-#     dst[start:end] += seg
-#     return end
-
-
-def skeleton_generator(bpm, skeleton, num_cycles, shift_proba, sr=48000):
+def skeleton_generator(amplitude, bpm, skeleton, num_cycles, shift_proba, sr=48000):
     beat_length_in_samples = int((60 / bpm) * sr)
     skeleton_length = len(skeleton)
     num_of_beats_in_audio = num_cycles * sum(x[0] for x in skeleton)
-
-    # [(1, D), (2.5, T), (2, S)]
     length_in_samples = int(
         sum([x[0] * beat_length_in_samples for x in skeleton]) * num_cycles
     )
@@ -102,7 +83,7 @@ def skeleton_generator(bpm, skeleton, num_cycles, shift_proba, sr=48000):
                 (adjusted_hit_timestamp, end_of_hit_timestamp)
             )
         i += 1
-    y_without_initial_silence = y[skeleton_hits_intervals[0][0] - 10 :]
+    y_without_initial_silence = amplitude * y[skeleton_hits_intervals[0][0] - 10 :]
     sf.write(
         "./skeleton.wav",
         data=y_without_initial_silence,
@@ -157,7 +138,7 @@ def subdivisions_generator(
                 sample_of_curr_subd += maxsubd_length
     y += subdivisions_y
     # sf.write(
-    #     f"./generated/t_{maxsubd}.wav",
+    #     f"./t_{maxsubd}.wav",
     #     y,
     #     samplerate=48000,
     # )
@@ -195,6 +176,7 @@ def subdivisions_generator_adjusted(
     bpm,
     skeleton,
     num_cycles,
+    amplitudes,
     sr=48000,
 ):
     num_of_beats = num_cycles * sum(x[0] for x in skeleton)
@@ -207,7 +189,12 @@ def subdivisions_generator_adjusted(
         probabilities_matrix=probabilities_matrix,
     )
     y, beat_length_in_samples, added_hits_intervals = skeleton_generator(
-        bpm=bpm, skeleton=skeleton, num_cycles=num_cycles, shift_proba=0.8, sr=sr
+        amplitude=amplitudes[-1],
+        bpm=bpm,
+        skeleton=skeleton,
+        num_cycles=num_cycles,
+        shift_proba=0.8,
+        sr=sr,
     )
     for subdiv in range(1, maxsubd, 1):
         # col_idx = maxsubd - subdiv
@@ -218,11 +205,11 @@ def subdivisions_generator_adjusted(
             beat_length_in_samples=beat_length_in_samples,
             hit_probabilities=processes[subdiv],
         )
-    # sf.write(
-    #     "./final.wav",
-    #     y,
-    #     samplerate=48000,
-    # )
+    sf.write(
+        "./final.wav",
+        y,
+        samplerate=48000,
+    )
     return y, num_of_beats, bpm
 
 
@@ -280,24 +267,6 @@ def subdivisions_generator_adjusted(
 #     return out
 
 
-# def _xfade_append(accum, seg, fade=256):
-#     """Append seg to accum with a short crossfade."""
-#     if accum.size == 0:
-#         return seg.copy()
-
-#     if fade > 0:
-#         f = min(fade, len(accum), len(seg))
-#         if f > 0:
-#             # linear ramps
-#             w_out = np.linspace(1.0, 0.0, f, dtype=accum.dtype)
-#             w_in = 1.0 - w_out
-#             accum[-f:] = accum[-f:] * w_out + seg[:f] * w_in
-#             return np.concatenate([accum, seg[f:]], axis=0)
-
-#     # no fade or not enough samples for it
-#     return np.concatenate([accum, seg], axis=0)
-
-
 def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation):
     lower = initial_tempo - allowed_tempo_deviation
     upper = initial_tempo + allowed_tempo_deviation
@@ -311,22 +280,11 @@ def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation)
     return choices
 
 
-# def fit_to_length(x, target_len):
-#     if len(x) == target_len:
-#         return x
-#     if len(x) > target_len:
-#         return x[:target_len]
-#     pad = target_len - len(x)
-#     if len(x) == 0:
-#         return np.zeros(target_len, dtype=np.float32)
-#     return np.pad(x, (0, pad), mode="edge")
-
-
 def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tempo, sr):
     beat_length_in_samples = int((60 / initial_tempo) * sr)
     current_beat = 1
     current_tempo = initial_tempo
-    new_y=[]
+    new_y = []
     while current_beat < num_of_beats:
         start = current_beat * beat_length_in_samples
         end = start + beat_length_in_samples
@@ -338,17 +296,21 @@ def adjust_generated_tempo(allowed_tempo_deviation, y, num_of_beats, initial_tem
         choice = random.choice(choices)
 
         if choice == 2:  # Increase
-            deviation = random.randint(1, initial_tempo+allowed_tempo_deviation-current_tempo)
+            deviation = random.randint(
+                1, initial_tempo + allowed_tempo_deviation - current_tempo
+            )
             current_tempo = current_tempo + deviation
         elif choice == 3:  # Decrease
-            deviation = random.randint(1, initial_tempo+allowed_tempo_deviation-current_tempo)
+            deviation = random.randint(
+                1, initial_tempo + allowed_tempo_deviation - current_tempo
+            )
             current_tempo = current_tempo - deviation
         else:  # Keep
             current_tempo = current_tempo
         new_sr = (beat_length_in_samples * current_tempo) / 60.0
         seg = y[start:end]
         seg_rs = librosa.resample(y=seg, orig_sr=sr, target_sr=new_sr)
-        new_y=np.concatenate([new_y,seg_rs])
+        new_y = np.concatenate([new_y, seg_rs])
         current_beat += 1
 
     sf.write(
@@ -371,7 +333,12 @@ matrix = [
     [0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625],
     [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
 ]
-
+amplitudes = [
+    0.052183534022625,
+    0.227138053760854,
+    0.493612215184329,
+    0.712676925659180,
+]
 
 probabilities_matrix = get_probability_matrix(matrix=matrix, notes=notes)
 print(probabilities_matrix)
@@ -381,6 +348,7 @@ y_generated, num_of_beats, initial_tempo = subdivisions_generator_adjusted(
     probabilities_matrix=probabilities_matrix,
     skeleton=squleton,
     num_cycles=10,
+    amplitudes=amplitudes,
 )
 adjust_generated_tempo(
     y=y_generated,
