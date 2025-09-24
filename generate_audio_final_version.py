@@ -223,7 +223,7 @@ def subdivisions_generator_adjusted(
         tempos=tempos,
     )
     sf.write(
-        "./final_5.wav",
+        "./final_80.wav",
         y,
         samplerate=48000,
     )
@@ -244,50 +244,50 @@ def get_available_choices(current_tempo, initial_tempo, allowed_tempo_deviation)
 
 
 def get_tempos(number_of_beats, initial_tempo, allowed_tempo_deviation):
-    tempos = []
-    current_tempo = initial_tempo
-    i = 0
-    while i <= number_of_beats:
-        choices = get_available_choices(
-            current_tempo, initial_tempo, allowed_tempo_deviation
-        )
-        choice = random.choice(choices)
-        if choice == 2:  # Increase
-            deviation = random.randint(
-                0, initial_tempo + allowed_tempo_deviation - current_tempo
-            )
-            tempos.append(current_tempo + deviation)
-        elif choice == 3:  # Decrease
-            deviation = random.randint(
-                0, initial_tempo + allowed_tempo_deviation - current_tempo
-            )
-            tempos.append(current_tempo - deviation)
-        else:  # Keep
-            tempos.append(current_tempo)
-        i += 1
-    # tempos.extend([initial_tempo] * 30)
-    return tempos
+    # tempos = []
+    # current_tempo = initial_tempo
+    # i = 0
+    # while i <= number_of_beats:
+    #     choices = get_available_choices(
+    #         current_tempo, initial_tempo, allowed_tempo_deviation
+    #     )
+    #     choice = random.choice(choices)
+    #     if choice == 2:  # Increase
+    #         deviation = random.randint(
+    #             0, initial_tempo + allowed_tempo_deviation - current_tempo
+    #         )
+    #         tempos.append(current_tempo + deviation)
+    #     elif choice == 3:  # Decrease
+    #         deviation = random.randint(
+    #             0, initial_tempo + allowed_tempo_deviation - current_tempo
+    #         )
+    #         tempos.append(current_tempo - deviation)
+    #     else:  # Keep
+    #         tempos.append(current_tempo)
+    #     i += 1
+    # # tempos.extend([initial_tempo] * 30)
+    return [initial_tempo] * (number_of_beats + 2)
 
 
 notes = ["D", "OTA", "OTI", "T1", "T2", "RA", "PA2"]
-skeleton = [(1, "D"), (0.5, "OTA"), (1, "OTA"), (0.5, "D"), (1, "OTA")]
+skeleton = [(1, "D"), (1, "PA2"), (1, "D"), (1, "PA2")]
 matrix = [
     [0, 0, 0, 0, 0, 0, 0, 0],
-    [20, 1.875, 1.875, 1.875, 1.875, 1.875, 1.875, 1.875],
-    [1.875, 1.875, 1.875, 1.875, 1.875, 1.875, 1.875, 1.875],
-    [0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625],
+    [100, 100, 100, 100, 100, 100, 100, 100],
     [0, 0, 0, 0, 0, 0, 0, 0],
-    [0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625, 0.625],
-    [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
 ]
-subdiv_proba = [30, 30, 25, 20, 7.5, 7.5, 7.5, 7.5]
+subdiv_proba = [100, 0, 0, 0, 0, 0, 0, 0]
 amplitudes = [
     0.052183534022625,
     0.227138053760854,
     0.493612215184329,
     0.712676925659180,
 ]
-amplitudes_proba_list = [0.25, 0.25, 0.25, 0.25]
+amplitudes_proba_list = [0, 0, 0, 1]
 # amplitudes_proba_list = [0.5, 0.5]
 # folder_name = "data/first_data"
 # output_file = "all_peaks_generated.json"
@@ -302,9 +302,9 @@ print(probabilities_matrix)
 y_generated, num_of_beats, initial_tempo = subdivisions_generator_adjusted(
     amplitudes=amplitudes,
     amplitudes_proba_list=amplitudes_proba_list,
-    shift_proba=0.8,
+    shift_proba=0,
     maxsubd=8,
-    bpm=120,
+    bpm=10,
     probabilities_matrix=probabilities_matrix,
     skeleton=skeleton,
     num_cycles=15,
